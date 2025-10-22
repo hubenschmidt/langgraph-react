@@ -1,117 +1,216 @@
-import React, {
-  useState,
-  useEffect,
-  ChangeEvent,
-  KeyboardEvent,
-  useRef,
-} from "react";
-import { useWebSocket } from "../services/useWebSocket"; // Custom hook to manage WebSocket connection
+import React, { useEffect, useMemo, useState } from "react";
 
-const App: React.FC = () => {
-  const [messages, setMessages] = useState<{ user: string; msg: string }[]>([
-    { user: "Bot", msg: "Welcome! How can I be of service today?" }, // Initial bot message
+type ChatUser = "User" | "Bot";
+type ChatMsg = { user: ChatUser; msg: string; streaming?: boolean };
+
+const WS_URL = "ws://localhost:8000/ws";
+
+export default function App() {
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    { user: "Bot", msg: "Welcome! How can I be of service today?" },
   ]);
-  const [input, setInput] = useState(""); // User input state
+  const [input, setInput] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
 
-  // WebSocket connection logic (message handling & status tracking)
-  const { response, isOpen, sendMessage } = useWebSocket(
-    "ws://localhost:8000/ws"
-  );
-  const messagesEndRef = useRef<HTMLDivElement>(null); // Ref for scrolling to the latest message
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [composing, setComposing] = useState(false);
+  const uuid = useMemo(() => crypto.randomUUID(), []);
 
   useEffect(() => {
-    // Handle WebSocket responses and update messages
-    if (response) {
-      setMessages((prevMessages) => {
-        const lastMessage = prevMessages[prevMessages.length - 1];
-        // Update last bot message or add a new one
-        if (lastMessage && lastMessage.user === "Bot") {
-          lastMessage.msg = response;
-          return [...prevMessages];
-        } else {
-          return [...prevMessages, { user: "Bot", msg: response }];
-        }
-      });
-    }
-  }, [response]);
+    const socket = new WebSocket(WS_URL);
+    setWs(socket);
 
-  // Updates input field on change
-  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(event.target.value);
-  };
+    socket.onopen = () => {
+      setIsOpen(true);
+      socket.send(JSON.stringify({ uuid, init: true }));
+    };
 
-  // Handles sending of messages from the user
-  const handleSubmit = () => {
-    if (input.trim()) {
-      const userMessage = { user: "User", msg: input };
-      setMessages((prevMessages) => [...prevMessages, userMessage]); // Add user message to list
-      setInput("");
+    socket.onclose = () => {
+      setIsOpen(false);
+      setWs(null);
+    };
 
-      if (isOpen) {
-        sendMessage(input); // Send message via WebSocket if open
+    socket.onerror = () => setIsOpen(false);
+
+    socket.onmessage = (event) => {
+      if (typeof event.data !== "string") return;
+
+      // Try to parse as JSON; if not JSON, treat as plain text => new bot bubble
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(event.data);
+      } catch {
+        setMessages((prev) => [...prev, { user: "Bot", msg: event.data }]);
+        return;
       }
-    }
-  };
+      if (parsed === null || typeof parsed !== "object") return;
 
-  // Scrolls to the latest token in the chat whenever a new message is added
+      const obj = parsed as Record<string, unknown>;
+
+      // Streaming token chunk
+      if (typeof obj.on_chat_model_stream === "string") {
+        const chunk = obj.on_chat_model_stream;
+        if (!chunk) return;
+
+        setMessages((prev) => {
+          const last = prev[prev.length - 1] as ChatMsg | undefined;
+          // Append to existing streaming bubble if present
+          if (last?.user === "Bot" && last.streaming) {
+            const next = prev.slice();
+            next[next.length - 1] = { ...last, msg: last.msg + chunk };
+            return next;
+          }
+          // Otherwise start a new streaming bot bubble
+          return [...prev, { user: "Bot", msg: chunk, streaming: true }];
+        });
+        return;
+      }
+
+      // End of assistant turn: mark last bot message as non-streaming
+      if (obj.on_chat_model_end === true) {
+        setMessages((prev) => {
+          const next = prev.slice();
+          const last = next[next.length - 1] as ChatMsg | undefined;
+          if (last?.user === "Bot" && last.streaming) {
+            next[next.length - 1] = { ...last, streaming: false };
+          }
+          return next;
+        });
+        return;
+      }
+
+      // Any custom event => new bubble (for visibility)
+      const keys = Object.keys(obj).filter(
+        (k) => k !== "on_chat_model_stream" && k !== "on_chat_model_end"
+      );
+      if (keys.length > 0) {
+        const k = keys[0];
+        setMessages((prev) => [
+          ...prev,
+          { user: "Bot", msg: `🔔 ${k}: ${JSON.stringify(obj[k])}` },
+        ]);
+      }
+    };
+
+    return () => {
+      try {
+        socket.close();
+      } catch {}
+      setWs(null);
+    };
+  }, [uuid]);
+
+  // Auto-scroll (simple)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }); // , 100); // you can add delay for scrolling, giving user a moment to read message bots message,
-    // but looks slightly jittery
-
-    return () => clearTimeout(timer); // Cleanup the timeout
+    requestAnimationFrame(() =>
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
+    );
   }, [messages]);
 
-  // Handles "Enter" key submission without needing to click the send button
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault(); // Prevent default newline
-      handleSubmit();
+  const sendUserMessage = () => {
+    const text = input.trim();
+    if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    setMessages((prev) => [...prev, { user: "User", msg: text }]);
+    setInput("");
+
+    ws.send(JSON.stringify({ uuid, message: text }));
+  };
+
+  const onSubmit: React.FormEventHandler<HTMLFormElement> = (e) => {
+    e.preventDefault();
+    sendUserMessage();
+  };
+
+  const onKeyDown: React.KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
+    if (composing) return;
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendUserMessage();
     }
   };
 
   return (
-    <div className="App">
-      <div className="chat-header">
-        {/* Connection status indicator and title */}
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
         <div
-          className={`connection-status ${isOpen ? "online" : "offline"}`}
-        ></div>
-        <b>LangGraph-Python 🤝 ReactJS</b>
+          style={{
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
+            background: isOpen ? "#16a34a" : "#dc2626",
+          }}
+          title={isOpen ? "Connected" : "Disconnected"}
+        />
+        <b>LangGraph (WS) 🤝 React</b>
       </div>
-      <div className="chat-container">
-        {/* Display chat messages */}
-        <div className="messages">
-          {messages.map((msg, index) => (
+
+      <div
+        style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12 }}
+      >
+        <div style={{ display: "grid", gap: 8, minHeight: 240 }}>
+          {messages.map((m, i) => (
             <div
-              key={index}
-              className={msg.user === "User" ? "message user" : "message bot"}
+              key={i}
+              style={{
+                alignSelf: m.user === "User" ? "end" : "start",
+                background: m.user === "User" ? "#343434ff" : "#000000ff",
+                border: "1px solid #e5e7eb",
+                padding: "8px 10px",
+                borderRadius: 8,
+                whiteSpace: "pre-wrap",
+                color: "#fff",
+              }}
             >
-              <strong>{msg.user}: </strong>
-              <br />
-              {msg.msg}
+              <strong>{m.user}:</strong>
+              <div>{m.msg}</div>
             </div>
           ))}
-          <div ref={messagesEndRef} />{" "}
-          {/* Reference to scroll to the latest message */}
         </div>
-        {/* Input form for typing and sending messages */}
-        <form className="chat-form" onSubmit={(e) => e.preventDefault()}>
+
+        <form
+          onSubmit={onSubmit}
+          style={{ display: "grid", gap: 8, marginTop: 12 }}
+        >
           <textarea
             value={input}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
             placeholder="Type or paste your message..."
             rows={4}
+            style={{ resize: "vertical", padding: 8 }}
+            spellCheck
+            autoFocus
           />
-          <button type="button" onClick={handleSubmit}>
-            Send
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="submit" disabled={!isOpen || !input.trim()}>
+              Send
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setMessages([
+                  {
+                    user: "Bot",
+                    msg: "Welcome! How can I be of service today?",
+                  },
+                ])
+              }
+            >
+              Reset
+            </button>
+          </div>
         </form>
       </div>
     </div>
   );
-};
-
-export default App;
+}
