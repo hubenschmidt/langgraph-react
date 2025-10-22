@@ -1,11 +1,16 @@
-import json
-import os
+import json, os, logging
+from datetime import datetime
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from agent.graph import invoke_our_graph
-from datetime import datetime
-from agent.cust_logger import logger, set_files_message_color
+
+# Simple, plain logging to stdout (Docker will capture it)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d - %(message)s",
+)
+logger = logging.getLogger("app")
 
 app = FastAPI()
 

@@ -1,6 +1,6 @@
 # Anything below this is entirely up to you to change and is flexible to your LangGraph build, drop in replacement
 # `invoke_our_graph` expects the compiled graph to be called `graph_runnable` to work out of the box.
-import sys, os
+import sys, os, json, logging
 from typing import Annotated, TypedDict
 
 from dotenv import load_dotenv
@@ -11,10 +11,13 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.checkpoint.memory import MemorySaver
-from agent.cust_logger import logger, set_files_message_color
 
-
-set_files_message_color('MAGENTA')  # Set color for logging in this function
+# set logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d - %(message)s",
+    )
+logger = logging.getLogger("app")
 
 # loads and checks if env var exists before continuing to model invocation
 load_dotenv()
