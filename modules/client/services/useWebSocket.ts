@@ -1,4 +1,3 @@
-// services/useWebSocket.ts
 import { useEffect, useMemo, useState, useCallback } from "react";
 
 export type ChatUser = "User" | "Bot";
@@ -11,7 +10,34 @@ type UseWebSocketReturn = {
   reset: () => void;
 };
 
-export function useWebSocket(url: string): UseWebSocketReturn {
+/** Apply a streaming chunk to chat state (guard-clause style). */
+const applyStreamChunk = (prev: ChatMsg[], chunk: string): ChatMsg[] => {
+  const last = prev.at(-1);
+  const isStreamingBot = !!(last && last.user === "Bot" && last.streaming);
+
+  // if there isn't an active streaming bot bubble, start one
+  if (!isStreamingBot) {
+    return [...prev, { user: "Bot", msg: chunk, streaming: true }];
+  }
+
+  // otherwise append to the current streaming bubble
+  const next = prev.slice();
+  next[next.length - 1] = { ...last!, msg: last!.msg + chunk };
+  return next;
+};
+
+/** Close the active streaming bubble if one exists (guard-clause style). */
+const applyEndOfTurn = (prev: ChatMsg[]): ChatMsg[] => {
+  const last = prev.at(-1);
+  // nothing to do if last isn't a streaming bot bubble
+  if (!(last && last.user === "Bot" && last.streaming)) return prev;
+
+  const next = prev.slice();
+  next[next.length - 1] = { ...last, streaming: false };
+  return next;
+};
+
+export const useWebSocket = (url: string): UseWebSocketReturn => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([
     { user: "Bot", msg: "Welcome! How can I be of service today?" },
@@ -53,42 +79,11 @@ export function useWebSocket(url: string): UseWebSocketReturn {
       if (parsed === null || typeof parsed !== "object") return;
       const obj = parsed as Record<string, unknown>;
 
-      /** Apply a streaming chunk to chat state (guard-clause style). */
-      function applyStreamChunk(prev: ChatMsg[], chunk: string): ChatMsg[] {
-        const last = prev.at(-1);
-        const isStreamingBot = !!(
-          last &&
-          last.user === "Bot" &&
-          last.streaming
-        );
-
-        // if there isn't an active streaming bot bubble, start one
-        if (!isStreamingBot) {
-          return [...prev, { user: "Bot", msg: chunk, streaming: true }];
-        }
-
-        // otherwise append to the current streaming bubble
-        const next = prev.slice();
-        next[next.length - 1] = { ...last!, msg: last!.msg + chunk };
-        return next;
-      }
-
       // --- stream chunk path ---
       const chunk = obj.on_chat_model_stream;
       if (typeof chunk === "string" && chunk.length > 0) {
         setMessages((prev) => applyStreamChunk(prev, chunk));
         return;
-      }
-
-      /** Close the active streaming bubble if one exists (guard-clause style). */
-      function applyEndOfTurn(prev: ChatMsg[]): ChatMsg[] {
-        const last = prev.at(-1);
-        // nothing to do if last isn't a streaming bot bubble
-        if (!(last && last.user === "Bot" && last.streaming)) return prev;
-
-        const next = prev.slice();
-        next[next.length - 1] = { ...last, streaming: false };
-        return next;
       }
 
       // --- end of assistant turn ---
@@ -137,4 +132,4 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   }, []);
 
   return { isOpen, messages, sendMessage, reset };
-}
+};

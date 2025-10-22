@@ -3,7 +3,7 @@ import { useWebSocket, ChatMsg } from "../services/useWebSocket";
 
 const WS_URL = "ws://localhost:8000/ws";
 
-export default function App() {
+const App = () => {
   const { isOpen, messages, sendMessage, reset } = useWebSocket(WS_URL);
   const [input, setInput] = useState("");
   const [composing, setComposing] = useState(false);
@@ -31,10 +31,19 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: 16 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
         <div
           style={{
-            width: 10, height: 10, borderRadius: "50%",
+            width: 10,
+            height: 10,
+            borderRadius: "50%",
             background: isOpen ? "#16a34a" : "#dc2626",
           }}
           title={isOpen ? "Connected" : "Disconnected"}
@@ -42,7 +51,9 @@ export default function App() {
         <b>LangGraph (WS) 🤝 React</b>
       </div>
 
-      <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12 }}>
+      <div
+        style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12 }}
+      >
         <div style={{ display: "grid", gap: 8, minHeight: 240 }}>
           {messages.map((m: ChatMsg, i: number) => (
             <div
@@ -63,7 +74,10 @@ export default function App() {
           ))}
         </div>
 
-        <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        <form
+          onSubmit={onSubmit}
+          style={{ display: "grid", gap: 8, marginTop: 12 }}
+        >
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -88,4 +102,6 @@ export default function App() {
       </div>
     </div>
   );
-}
+};
+
+export default App;
