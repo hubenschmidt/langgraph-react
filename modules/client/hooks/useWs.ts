@@ -37,7 +37,7 @@ const applyEndOfTurn = (prev: ChatMsg[]): ChatMsg[] => {
   return next;
 };
 
-export const useWebSocket = (url: string): UseWebSocketReturn => {
+export const useWs = (url: string): UseWebSocketReturn => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([
     { user: "Bot", msg: "Welcome! How can I be of service today?" },
