@@ -63,3 +63,14 @@ If you change the client deps:
 ```bash
 docker compose build client && docker compose up
 ```
+
+## 3) What's running (ports)
+
+| Service                       | URL / Port             | Notes                                                      |
+| ----------------------------- | ---------------------- | ---------------------------------------------------------- |
+| LangGraph API (dev)           | http://localhost:2024  | OpenAPI docs at `/docs`.                                   |
+| FastAPI WebSocket server      | ws://localhost:8000/ws | React client connects here for streaming tokens.           |
+| React client (Next.js)        | http://localhost:3001  | Chat UI that talks to the WS server.                       |
+| Langfuse Web                  | http://localhost:3000  | UI for traces; initialize on first run.                    |
+| MinIO (S3 API)                | http://localhost:9090  | Used by Langfuse for storage.                              |
+| Postgres / ClickHouse / Redis | _loopback only_        | Bound to `127.0.0.1` inside Compose; not publicly exposed. |
