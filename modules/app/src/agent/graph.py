@@ -12,12 +12,7 @@ from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
-# set logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d - %(message)s",
-    )
-logger = logging.getLogger("app")
+logger = logging.getLogger("app.graph")
 
 # loads and checks if env var exists before continuing to model invocation
 load_dotenv()

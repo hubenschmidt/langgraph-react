@@ -4,17 +4,13 @@ from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from agent.graph import invoke_our_graph
+from agent.logging_config import configure_logging
 
 # Simple, plain logging to stdout (Docker will capture it)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d - %(message)s",
-)
-logger = logging.getLogger("app")
+configure_logging()
+logger = logging.getLogger("app.server")
 
 app = FastAPI()
-
-set_files_message_color('purple')  # Set log message color for this file to 'purple'
 
 # WebSocket endpoint for real-time communication with the frontend
 @app.websocket("/ws")
