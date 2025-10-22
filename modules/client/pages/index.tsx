@@ -49,7 +49,7 @@ const App = () => {
           }}
           title={isOpen ? "Connected" : "Disconnected"}
         />
-        <b>LangGraph (WS) 🤝 React</b>
+        <b>LangGraph-React</b>
       </div>
 
       <div
@@ -81,21 +81,26 @@ const App = () => {
               >
                 <div
                   style={{
-                    maxWidth: "75%",
+                    // NEW: let bubbles size to content, but cap width
+                    display: "inline-block",
+                    width: "fit-content",
+                    maxWidth: isUser ? "75%" : "100%", // user capped, bot can use full width
+
                     background: isUser ? "#1f2937" : "#111827",
                     border: "1px solid #2b2b2b",
                     padding: "6px 10px",
                     borderRadius: 10,
                     color: "#fff",
                     whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
+                    overflowWrap: "anywhere", // good for long code/URLs
+                    marginBottom: 20,
                   }}
                 >
                   <div
                     style={{
                       fontSize: 12,
                       opacity: 0.75,
-                      marginBottom: 2,
+                      marginBottom: 4,
                       textAlign: isUser ? "right" : "left",
                     }}
                   >
