@@ -74,3 +74,52 @@ docker compose build client && docker compose up
 | Langfuse Web                  | http://localhost:3000  | UI for traces; initialize on first run.                    |
 | MinIO (S3 API)                | http://localhost:9090  | Used by Langfuse for storage.                              |
 | Postgres / ClickHouse / Redis | _loopback only_        | Bound to `127.0.0.1` inside Compose; not publicly exposed. |
+
+## 4) Verify it works
+
+### Client UI
+
+1. Open http://localhost:3001
+2. Send a message.
+
+You should see:
+
+- **User** bubble on the **right**
+- **Bot** streaming response on the **left**
+
+---
+
+### LangGraph API
+
+- Open http://localhost:2024/docs for the dev API docs.
+
+---
+
+### Langfuse UI
+
+- Open http://localhost:3000
+- Complete the initial setup
+- Watch traces populate as you chat from the client
+
+---
+
+### WebSocket quick test (browser console)
+
+Open your browser devtools console and run:
+
+```js
+// 1) Connect
+const ws = new WebSocket("ws://localhost:8000/ws");
+
+// 2) Log any server messages
+ws.onmessage = (e) => console.log("WS message:", e.data);
+
+// 3) On open, init a session and send a test user message
+ws.onopen = () => {
+  ws.send(JSON.stringify({ uuid: "test-123", init: true }));
+  ws.send(JSON.stringify({ uuid: "test-123", message: "hello websocket" }));
+};
+
+// 4) To close later
+// ws.close();
+```
