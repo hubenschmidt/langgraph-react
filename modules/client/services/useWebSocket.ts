@@ -1,3 +1,4 @@
+// services/useWebSocket.ts
 import { useEffect, useMemo, useState, useCallback } from "react";
 
 export type ChatUser = "User" | "Bot";
@@ -17,7 +18,6 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   ]);
   const [ws, setWs] = useState<WebSocket | null>(null);
 
-  // Stable per-session id
   const uuid = useMemo(() => crypto.randomUUID(), []);
 
   useEffect(() => {
@@ -37,9 +37,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
     socket.onerror = () => setIsOpen(false);
 
     socket.onmessage = (event) => {
+      // must be text
       if (typeof event.data !== "string") return;
 
-      // Try JSON; if not JSON, treat as plain text => new Bot bubble
+      // try JSON; if it fails, treat as plain text -> new bot bubble
       let parsed: unknown;
       try {
         parsed = JSON.parse(event.data);
@@ -47,52 +48,66 @@ export function useWebSocket(url: string): UseWebSocketReturn {
         setMessages((prev) => [...prev, { user: "Bot", msg: event.data }]);
         return;
       }
-      if (parsed === null || typeof parsed !== "object") return;
 
+      // must be an object
+      if (parsed === null || typeof parsed !== "object") return;
       const obj = parsed as Record<string, unknown>;
 
-      // Stream chunk
-      if (typeof obj.on_chat_model_stream === "string") {
-        const chunk = obj.on_chat_model_stream;
-        if (!chunk) return;
+      /** Apply a streaming chunk to chat state (guard-clause style). */
+      function applyStreamChunk(prev: ChatMsg[], chunk: string): ChatMsg[] {
+        const last = prev.at(-1);
+        const isStreamingBot = !!(
+          last &&
+          last.user === "Bot" &&
+          last.streaming
+        );
 
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.user === "Bot" && last.streaming) {
-            // append to active streaming bubble
-            const next = prev.slice();
-            next[next.length - 1] = { ...last, msg: last.msg + chunk };
-            return next;
-          }
-          // start a new streaming bubble
+        // if there isn't an active streaming bot bubble, start one
+        if (!isStreamingBot) {
           return [...prev, { user: "Bot", msg: chunk, streaming: true }];
-        });
+        }
+
+        // otherwise append to the current streaming bubble
+        const next = prev.slice();
+        next[next.length - 1] = { ...last!, msg: last!.msg + chunk };
+        return next;
+      }
+
+      // --- stream chunk path ---
+      const chunk = obj.on_chat_model_stream;
+      if (typeof chunk === "string" && chunk.length > 0) {
+        setMessages((prev) => applyStreamChunk(prev, chunk));
         return;
       }
 
-      // End of assistant turn → mark last as not streaming (if it is)
+      /** Close the active streaming bubble if one exists (guard-clause style). */
+      function applyEndOfTurn(prev: ChatMsg[]): ChatMsg[] {
+        const last = prev.at(-1);
+        // nothing to do if last isn't a streaming bot bubble
+        if (!(last && last.user === "Bot" && last.streaming)) return prev;
+
+        const next = prev.slice();
+        next[next.length - 1] = { ...last, streaming: false };
+        return next;
+      }
+
+      // --- end of assistant turn ---
       if (obj.on_chat_model_end === true) {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.user !== "Bot" || !last.streaming) return prev;
-          const next = prev.slice();
-          next[next.length - 1] = { ...last, streaming: false };
-          return next;
-        });
+        setMessages((prev) => applyEndOfTurn(prev));
         return;
       }
 
-      // Custom events → new bubble
-      const keys = Object.keys(obj).filter(
+      // --- custom event -> new bubble ---
+      const payloadKeys = Object.keys(obj).filter(
         (k) => k !== "on_chat_model_stream" && k !== "on_chat_model_end"
       );
-      if (keys.length > 0) {
-        const k = keys[0];
-        setMessages((prev) => [
-          ...prev,
-          { user: "Bot", msg: `🔔 ${k}: ${JSON.stringify(obj[k])}` },
-        ]);
-      }
+      if (payloadKeys.length === 0) return;
+
+      const k = payloadKeys[0];
+      setMessages((prev) => [
+        ...prev,
+        { user: "Bot", msg: `🔔 ${k}: ${JSON.stringify(obj[k])}` },
+      ]);
     };
 
     return () => {
@@ -106,12 +121,10 @@ export function useWebSocket(url: string): UseWebSocketReturn {
   const sendMessage = useCallback(
     (text: string) => {
       const t = text.trim();
-      if (!t || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (!t) return;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-      // Push user bubble
       setMessages((prev) => [...prev, { user: "User", msg: t }]);
-
-      // Let server start a fresh assistant turn (hook will create/append accordingly)
       ws.send(JSON.stringify({ uuid, message: t }));
     },
     [ws, uuid]
