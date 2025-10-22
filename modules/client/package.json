@@ -1,0 +1,57 @@
+{
+  "name": "langgraph-react-client",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 80",
+    "test": "jest --watchAll",
+    "test:ci": "jest --ci --reporters=jest-junit --coverage --passWithNoTests"
+  },
+  "dependencies": {
+    "@auth0/nextjs-auth0": "^4.6.0",
+    "axios": "^1.9.0",
+    "cors": "^2.8",
+    "lucide-react": "^0.482.0",
+    "next": "^15.2.3",
+    "random-words": "^2.0.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "19.1.11",
+    "babel-jest": "^29.5.0",
+    "eslint": "^9.28.0",
+    "jest": "29.7",
+    "jest-environment-jsdom": "^30.0.0-beta.3",
+    "jest-fetch-mock": "^3.0",
+    "jest-junit": "^16.0.0",
+    "nodemon": "^3.1.10",
+    "typescript": "^5.7"
+  },
+  "jest-junit": {
+    "includeConsoleOutput": true,
+    "outputName": "TEST-1.xml",
+    "reportTestSuiteErrors": true,
+    "suiteName": "node-api tests"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
