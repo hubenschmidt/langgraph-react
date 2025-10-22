@@ -2,22 +2,32 @@
 FROM python:3.11-slim AS base
 WORKDIR /app
 
+# OS deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git build-essential && rm -rf /var/lib/apt/lists/*
+    curl git build-essential ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
-# Install uv
+# uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && ln -s /root/.local/bin/uv /usr/local/bin/uv
 
-# Copy deps first for caching
+# App files
 COPY pyproject.toml README.md ./
 COPY src ./src
 
+# Dev image
 FROM base AS dev
-ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 UV_SYSTEM_PYTHON=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_SYSTEM_PYTHON=1
 
-# Install your app + Langfuse SDK
+# Python deps (your pyproject must include fastapi/uvicorn/websockets)
 RUN uv pip install -e . --no-cache-dir
 
-# LangGraph dev server
-EXPOSE 2024
-CMD ["uv","run","langgraph","dev","--host","0.0.0.0","--port","2024"]
+# Copy start.sh to the Docker container
+COPY start.sh /usr/src/app/start.sh
+
+# Give execution permissions to the start.sh script
+RUN chmod +x /usr/src/app/start.sh
+
+EXPOSE 2024 8000
+CMD ["/usr/src/app/start.sh"]
