@@ -1,110 +1,127 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { generate } from "random-words";
+import { useEffect, useMemo, useState, useCallback } from "react";
 
-export const useWebSocket = (url: string) => {
-  const [response, setResponse] = useState<string>(""); // Stores bot responses
-  const [isOpen, setIsOpen] = useState<boolean>(false); // WebSocket connection status
-  const [isBotResponseComplete, setIsBotResponseComplete] =
-    useState<boolean>(false); // Tracks completion of bot response
-  const socketRef = useRef<WebSocket | null>(null); // WebSocket reference
-  const wordUUIDRef = useRef<string>(
-    (generate({ exactly: 4 }) as string[]).join("-")
-  ); // Conversation UUID
-  const messageQueueRef = useRef<string[]>([]); // Queue for unsent messages
-  const retryCountRef = useRef<number>(0); // Tracks reconnection attempts
-  const maxRetries = 5; // Max number of reconnection attempts
+export type ChatUser = "User" | "Bot";
+export type ChatMsg = { user: ChatUser; msg: string; streaming?: boolean };
 
-  const connectSocket = useCallback(() => {
+type UseWebSocketReturn = {
+  isOpen: boolean;
+  messages: ChatMsg[];
+  sendMessage: (text: string) => void;
+  reset: () => void;
+};
+
+export function useWebSocket(url: string): UseWebSocketReturn {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMsg[]>([
+    { user: "Bot", msg: "Welcome! How can I be of service today?" },
+  ]);
+  const [ws, setWs] = useState<WebSocket | null>(null);
+
+  // Stable per-session id
+  const uuid = useMemo(() => crypto.randomUUID(), []);
+
+  useEffect(() => {
     const socket = new WebSocket(url);
-    socketRef.current = socket;
+    setWs(socket);
 
     socket.onopen = () => {
-      console.log("WebSocket connection opened for", wordUUIDRef.current);
       setIsOpen(true);
-      retryCountRef.current = 0;
-      socket.send(JSON.stringify({ uuid: wordUUIDRef.current, init: true })); // Send initial connection message
-
-      // Send queued messages once connection is open
-      while (messageQueueRef.current.length > 0) {
-        const message = messageQueueRef.current.shift();
-        if (message) {
-          sendMessage(message);
-        }
-      }
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log("Received from server:", data);
-
-        if (data.on_chat_model_stream) {
-          setResponse(
-            (prevResponse) => prevResponse + data.on_chat_model_stream
-          ); // Streamed response handling
-        }
-
-        if (data.on_chat_model_end) {
-          setIsBotResponseComplete(true); // Bot streaming is done, message complete
-        }
-      } catch (error) {
-        console.log("Error parsing WebSocket message:", error);
-      }
+      socket.send(JSON.stringify({ uuid, init: true }));
     };
 
     socket.onclose = () => {
-      console.log("WebSocket connection closed");
       setIsOpen(false);
+      setWs(null);
+    };
 
-      if (retryCountRef.current < maxRetries) {
-        retryCountRef.current += 1;
-        console.log(
-          `Attempting to reconnect (${retryCountRef.current}/${maxRetries}) in 3 seconds...`
-        );
-        setTimeout(connectSocket, 3000); // Retry connection after a 3 sec delay
-      } else {
-        console.log(
-          "Max reconnection attempts reached. Stopping reconnection."
-        );
+    socket.onerror = () => setIsOpen(false);
+
+    socket.onmessage = (event) => {
+      if (typeof event.data !== "string") return;
+
+      // Try JSON; if not JSON, treat as plain text => new Bot bubble
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(event.data);
+      } catch {
+        setMessages((prev) => [...prev, { user: "Bot", msg: event.data }]);
+        return;
+      }
+      if (parsed === null || typeof parsed !== "object") return;
+
+      const obj = parsed as Record<string, unknown>;
+
+      // Stream chunk
+      if (typeof obj.on_chat_model_stream === "string") {
+        const chunk = obj.on_chat_model_stream;
+        if (!chunk) return;
+
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.user === "Bot" && last.streaming) {
+            // append to active streaming bubble
+            const next = prev.slice();
+            next[next.length - 1] = { ...last, msg: last.msg + chunk };
+            return next;
+          }
+          // start a new streaming bubble
+          return [...prev, { user: "Bot", msg: chunk, streaming: true }];
+        });
+        return;
+      }
+
+      // End of assistant turn → mark last as not streaming (if it is)
+      if (obj.on_chat_model_end === true) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.user !== "Bot" || !last.streaming) return prev;
+          const next = prev.slice();
+          next[next.length - 1] = { ...last, streaming: false };
+          return next;
+        });
+        return;
+      }
+
+      // Custom events → new bubble
+      const keys = Object.keys(obj).filter(
+        (k) => k !== "on_chat_model_stream" && k !== "on_chat_model_end"
+      );
+      if (keys.length > 0) {
+        const k = keys[0];
+        setMessages((prev) => [
+          ...prev,
+          { user: "Bot", msg: `🔔 ${k}: ${JSON.stringify(obj[k])}` },
+        ]);
       }
     };
-
-    socket.onerror = (error) => {
-      console.log("WebSocket error:", error);
-    };
-  }, [url]); // watches changes to url
-
-  useEffect(() => {
-    connectSocket();
 
     return () => {
-      if (
-        socketRef.current &&
-        socketRef.current.readyState === WebSocket.OPEN
-      ) {
-        socketRef.current.close(); // Close connection on cleanup
-      }
+      try {
+        socket.close();
+      } catch {}
+      setWs(null);
     };
-  }, [connectSocket]);
+  }, [url, uuid]);
 
-  const sendMessage = (message: string) => {
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      const payload = {
-        uuid: wordUUIDRef.current,
-        message,
-        init: false,
-      };
-      socketRef.current.send(JSON.stringify(payload)); // Send message to WebSocket server
-      setIsBotResponseComplete(false);
-      setResponse(""); // Clear previous response before new message is processed
-    } else {
-      console.log(
-        "WebSocket connection is not open, queuing message:",
-        message
-      );
-      messageQueueRef.current.push(message); // Queue message if connection is closed
-    }
-  };
+  const sendMessage = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t || !ws || ws.readyState !== WebSocket.OPEN) return;
 
-  return { response, isOpen, isBotResponseComplete, sendMessage };
-};
+      // Push user bubble
+      setMessages((prev) => [...prev, { user: "User", msg: t }]);
+
+      // Let server start a fresh assistant turn (hook will create/append accordingly)
+      ws.send(JSON.stringify({ uuid, message: t }));
+    },
+    [ws, uuid]
+  );
+
+  const reset = useCallback(() => {
+    setMessages([
+      { user: "Bot", msg: "Welcome! How can I be of service today?" },
+    ]);
+  }, []);
+
+  return { isOpen, messages, sendMessage, reset };
+}
