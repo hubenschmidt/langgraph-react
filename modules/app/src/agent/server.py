@@ -11,20 +11,6 @@ app = FastAPI()
 
 set_files_message_color('purple')  # Set log message color for this file to 'purple'
 
-# Serve the root route by responding using the React app's index.html file
-@app.get("/")
-async def serve_root():
-    return FileResponse(os.path.join("frontend", "build", "index.html"))
-
-# Serve all other routes to enable React Router to work with deep URLs
-@app.get("/{full_path:path}")
-async def serve_frontend(full_path: str):
-    file_path = os.path.join("frontend", "build", full_path)
-    # If the file exists, return it, otherwise fallback to index.html (for React Router SPA)
-    if os.path.exists(file_path):
-        return FileResponse(file_path)
-    return FileResponse(os.path.join("frontend", "build", "index.html"))
-
 # WebSocket endpoint for real-time communication with the frontend
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
