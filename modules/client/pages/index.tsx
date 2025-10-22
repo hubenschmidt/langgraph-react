@@ -16,8 +16,9 @@ const App = () => {
 
   const onSubmit: React.FormEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    sendMessage(input);
+    const text = input.trim();
+    if (!text) return;
+    sendMessage(text);
     setInput("");
   };
 
@@ -52,28 +53,62 @@ const App = () => {
       </div>
 
       <div
-        style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 12 }}
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 8,
+          padding: 12,
+          background: "#0b0b0b",
+        }}
       >
-        <div style={{ display: "grid", gap: 8, minHeight: 240 }}>
-          {messages.map((m: ChatMsg, i: number) => (
-            <div
-              key={i}
-              style={{
-                alignSelf: m.user === "User" ? "end" : "start",
-                background: m.user === "User" ? "#343434ff" : "#000000ff",
-                border: "1px solid #e5e7eb",
-                padding: "8px 10px",
-                borderRadius: 8,
-                whiteSpace: "pre-wrap",
-                color: "#fff",
-              }}
-            >
-              <strong>{m.user}:</strong>
-              <div>{m.msg}</div>
-            </div>
-          ))}
+        {/* message list */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            minHeight: 240,
+          }}
+        >
+          {messages.map((m: ChatMsg, i: number) => {
+            const isUser = m.user === "User";
+            return (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: isUser ? "flex-end" : "flex-start",
+                }}
+              >
+                <div
+                  style={{
+                    maxWidth: "75%",
+                    background: isUser ? "#1f2937" : "#111827",
+                    border: "1px solid #2b2b2b",
+                    padding: "6px 10px",
+                    borderRadius: 10,
+                    color: "#fff",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      opacity: 0.75,
+                      marginBottom: 2,
+                      textAlign: isUser ? "right" : "left",
+                    }}
+                  >
+                    <strong>{m.user}</strong>
+                  </div>
+                  <div>{m.msg.trim()}</div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
+        {/* input */}
         <form
           onSubmit={onSubmit}
           style={{ display: "grid", gap: 8, marginTop: 12 }}
@@ -85,8 +120,15 @@ const App = () => {
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             placeholder="Type or paste your message..."
-            rows={4}
-            style={{ resize: "vertical", padding: 8 }}
+            rows={3}
+            style={{
+              resize: "vertical",
+              padding: 8,
+              background: "#0f1115",
+              color: "#fff",
+              border: "1px solid #2b2b2b",
+              borderRadius: 8,
+            }}
             spellCheck
             autoFocus
           />
