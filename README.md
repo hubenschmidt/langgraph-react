@@ -123,25 +123,3 @@ ws.onopen = () => {
 // 4) To close later
 // ws.close();
 ```
-
-## Project layout
-
-.
-├─ docker-compose.yml
-├─ .env.example # copy to .env (root)
-├─ modules/
-│ └─ app/
-│ ├─ Dockerfile
-│ ├─ langgraph.json
-│ ├─ pyproject.toml
-│ ├─ start.sh
-│ └─ src/agent/
-│ ├─ graph.py # LangGraph definition
-│ ├─ server.py # FastAPI WebSocket server (port 8000)
-│ └─ cust_logger.py
-└─ modules/
-└─ client/
-├─ package.json
-├─ app/ or src/
-│ └─ index.tsx # React chat UI
-└─ styles/globals.css # Tailwind v4 entry (`@import "tailwindcss";`)
