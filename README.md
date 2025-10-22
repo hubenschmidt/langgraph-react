@@ -32,10 +32,12 @@ cp .env.example .env
 
 ### B) App env (Python app)
 
-# modules/app/.env
+#### modules/app/.env
+
 OPENAI_API_KEY=sk-...
 
-# Optional but recommended for Langfuse tracing
+#### Optional but recommended for Langfuse tracing
+
 LANGFUSE_PUBLIC_KEY=...
 LANGFUSE_SECRET_KEY=...
 LANGFUSE_HOST=http://langfuse:3000
@@ -49,6 +51,7 @@ docker compose up
 ```
 
 ### Rebuild tips
+
 If you change Python deps in modules/app/pyproject.toml:
 
 ```bash
@@ -60,5 +63,3 @@ If you change the client deps:
 ```bash
 docker compose build client && docker compose up
 ```
-
-
