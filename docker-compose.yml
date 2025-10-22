@@ -15,6 +15,7 @@ services:
       - ./modules/app:/app
     ports:
       - "2024:2024" # LangGraph API to host
+      - "8000:8000" # FastAPI server.py
 
   client:
     build:
