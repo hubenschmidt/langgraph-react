@@ -31,93 +31,46 @@ const App = () => {
   };
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: 16 }}>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-          marginBottom: 12,
-        }}
-      >
+    <div className="app">
+      <header className="header">
         <div
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: isOpen ? "#16a34a" : "#dc2626",
-          }}
+          className={`status ${isOpen ? "status--online" : "status--offline"}`}
           title={isOpen ? "Connected" : "Disconnected"}
         />
-        <b>LangGraph-React</b>
-      </div>
+        <b className="title">LangGraph-React</b>
+      </header>
 
-      <div
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 8,
-          padding: 12,
-          background: "#0b0b0b",
-        }}
-      >
-        {/* message list */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            minHeight: 240,
-          }}
-        >
+      <main className="chat-card">
+        <section className="msg-list">
           {messages.map((m: ChatMsg, i: number) => {
             const isUser = m.user === "User";
             return (
               <div
                 key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: isUser ? "flex-end" : "flex-start",
-                }}
+                className={`msg-row ${
+                  isUser ? "msg-row--user" : "msg-row--bot"
+                }`}
               >
                 <div
-                  style={{
-                    // NEW: let bubbles size to content, but cap width
-                    display: "inline-block",
-                    width: "fit-content",
-                    maxWidth: isUser ? "75%" : "100%", // user capped, bot can use full width
-
-                    background: isUser ? "#1f2937" : "#111827",
-                    border: "1px solid #2b2b2b",
-                    padding: "6px 10px",
-                    borderRadius: 10,
-                    color: "#fff",
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere", // good for long code/URLs
-                    marginBottom: 20,
-                  }}
+                  className={`bubble ${
+                    isUser ? "bubble--user" : "bubble--bot"
+                  }`}
                 >
                   <div
-                    style={{
-                      fontSize: 12,
-                      opacity: 0.75,
-                      marginBottom: 4,
-                      textAlign: isUser ? "right" : "left",
-                    }}
+                    className={`bubble__author ${
+                      isUser ? "bubble__author--right" : "bubble__author--left"
+                    }`}
                   >
                     <strong>{m.user}</strong>
                   </div>
-                  <div>{m.msg.trim()}</div>
+                  <div className="bubble__text">{m.msg.trim()}</div>
                 </div>
               </div>
             );
           })}
-        </div>
+        </section>
 
-        {/* input */}
-        <form
-          onSubmit={onSubmit}
-          style={{ display: "grid", gap: 8, marginTop: 12 }}
-        >
+        <form className="input-form" onSubmit={onSubmit}>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -126,27 +79,24 @@ const App = () => {
             onCompositionEnd={() => setComposing(false)}
             placeholder="Type or paste your message..."
             rows={3}
-            style={{
-              resize: "vertical",
-              padding: 8,
-              background: "#0f1115",
-              color: "#fff",
-              border: "1px solid #2b2b2b",
-              borderRadius: 8,
-            }}
             spellCheck
             autoFocus
+            className="input-form__textarea"
           />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="submit" disabled={!isOpen || !input.trim()}>
+          <div className="input-form__actions">
+            <button
+              type="submit"
+              className="btn"
+              disabled={!isOpen || !input.trim()}
+            >
               Send
             </button>
-            <button type="button" onClick={reset}>
+            <button type="button" className="btn btn--ghost" onClick={reset}>
               Reset
             </button>
           </div>
         </form>
-      </div>
+      </main>
     </div>
   );
 };
