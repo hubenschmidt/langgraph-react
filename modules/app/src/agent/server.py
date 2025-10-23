@@ -1,4 +1,4 @@
-# server.py — FastAPI + WebSocket (no while/else/continue)
+# server.py — FastAPI + WebSocket
 # Flow:
 #   - accept WS
 #   - async-iterate frames
