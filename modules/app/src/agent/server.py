@@ -1,8 +1,9 @@
-# server.py — FastAPI + WebSocket (guard clauses only)
+# server.py — FastAPI + WebSocket (guard clauses, no `while True`)
 # Flow:
 #   - accept WS
-#   - loop: receive JSON -> log -> handle `init` ping or forward `message` to graph
-#   - errors are logged; connection is closed on exit
+#   - async-iterate incoming messages
+#   - parse → log → handle `init` or forward `message` to graph
+#   - errors logged; socket closed on exit
 
 import json
 import logging
@@ -28,15 +29,12 @@ async def websocket_endpoint(websocket: WebSocket):
     # Accept any incoming WebSocket right away
     await websocket.accept()
 
-    # We'll fill this once we see the client's UUID in their first message
-    user_uuid = None
+    user_uuid = None  # set once we see a 'uuid' from the client
 
     try:
-        while True:
-            # 1) Receive text from client
-            data = await websocket.receive_text()
-
-            # 2) Parse JSON safely. If it fails, log and wait for next frame.
+        # Iterate over incoming text frames; exits when client disconnects
+        async for data in websocket.iter_text():
+            # Parse JSON safely; skip bad frames
             try:
                 payload = json.loads(data)
             except json.JSONDecodeError as e:
@@ -47,19 +45,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
                 continue
 
-            # 3) Log the raw payload exactly as received (after parsing)
+            # Log exactly what we received
             logger.info(json.dumps({
                 "timestamp": datetime.now().isoformat(),
                 "uuid": user_uuid,
                 "received": payload
             }))
 
-            # 4) Keep track of the user's conversation id if provided
+            # Track conversation id if provided
             uid = payload.get("uuid")
             if uid:
                 user_uuid = uid
 
-            # 5) If this is an init-only ping, log and wait for the next frame
+            # Init ping? Log and wait for next frame
             if payload.get("init"):
                 logger.info(json.dumps({
                     "timestamp": datetime.now().isoformat(),
@@ -68,16 +66,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 }))
                 continue
 
-            # 6) No message? nothing to do (could be a heartbeat). Wait for next frame.
+            # No message content? Nothing to do
             message = payload.get("message")
             if not message:
                 continue
 
-            # 7) We have a user message: invoke the graph, which streams back over this WS
+            # We have a user message: invoke the graph (streams back over this WS)
             await invoke_our_graph(websocket, message, user_uuid)
 
     except Exception as e:
-        # Catch-all for unexpected errors during the loop
+        # Catch-all for unexpected errors during iteration
         logger.error(json.dumps({
             "timestamp": datetime.now().isoformat(),
             "uuid": user_uuid,
@@ -109,5 +107,4 @@ async def websocket_endpoint(websocket: WebSocket):
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    # Use log level "warning" to reduce noise in local dev logs
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
