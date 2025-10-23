@@ -50,6 +50,34 @@ LANGFUSE_HOST=http://langfuse:3000
 docker compose up
 ```
 
+## 3) Create Langfuse credentials
+
+- navigate in a browser window to Langfuse at http://localhost:3000 and "Sign up" for a new Langfuse account (create local account)
+- create New Organization
+- add Organization members
+- create New Project "langgraph-react"
+- Configure tracing -> Create new API key
+- Copy Secret Key and Public Key to /modules/app/.env PUBLIC_KEY and SECRET_KEY.. and maintain LANGFUSE_HOST="http://langfuse:3000"
+- recreate the `app` container.. open a new WSL2 window, navigate to `langgraph-react` directory and run
+
+```bash
+docker compose up -d --no-deps --force-recreate app
+```
+
+## 4) Test everything is working
+
+- navigate in a browser window to http://localhost:3001
+- enter a message in the chat
+- check the container log output.. it should emit something like
+
+```bash
+langfuse-worker-1  | 2025-10-23T23:34:33.552Z info      Starting ClickhouseWriter. Max interval: 1000 ms, Max batch size: 1000
+```
+
+- navigate to Langfuse at http://localhost:3000
+- Select `Tracing` and you should see a Timestamped trace displayed for the most recent message in the chat
+- Success! ✅🏆🎯💯🚀🎯 `langgraph-react` is working with self-hosted Langfuse observability tracing.
+
 ### Rebuild tips
 
 - If you change Python deps in modules/app/pyproject.toml:

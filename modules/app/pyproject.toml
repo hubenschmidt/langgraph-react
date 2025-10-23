@@ -1,21 +1,21 @@
 [project]
-name = "agent"
-version = "0.0.1"
-description = "Starter template for making a new agent LangGraph."
+name = "langgraph-react"
+version = "1.0.0"
+description = "Starter template for making a new agent LangGraph with React."
 authors = [
-    { name = "William Fu-Hinthorn", email = "13333726+hinthornw@users.noreply.github.com" },
+    { name = "William Hubenschmidt", email = "whubenschmidt@gmail.com" },
 ]
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
   "langgraph>=1.0,<2",
   "python-dotenv>=1.0,<2",
-  "langfuse>=3",
-  "openai>=2.6.0",
-  "fastapi>=0.110,<1",
-  "uvicorn>=0.29,<1",
-  "websockets>=12,<13",
+  "langfuse>=3,<4",
+  "openai>=2.6.0,<3",
+  "fastapi>=0.119.1,<1",
+  "uvicorn>=0.38,<1",
+  "websockets>=15,<16",
 ]
 
 
@@ -63,7 +63,7 @@ convention = "google"
 [dependency-groups]
 dev = [
     "anyio>=4.7.0",
-    "langgraph-cli[inmem]>=0.2.8",
+    "langgraph-cli[inmem]>=0.4.4,<1",
     "mypy>=1.13.0",
     "pytest>=8.3.5",
     "ruff>=0.8.2",

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 WORKDIR /app
 
 # OS deps
@@ -18,7 +18,8 @@ COPY src ./src
 FROM base AS dev
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    UV_SYSTEM_PYTHON=1
+    UV_SYSTEM_PYTHON=1 \
+    PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 
 # Python deps (your pyproject must include fastapi/uvicorn/websockets)
 RUN uv pip install -e . --no-cache-dir
