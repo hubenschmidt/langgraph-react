@@ -1,6 +1,6 @@
 # langgraph-react
 
-Starter that runs:
+Bootstrap that runs:
 
 - **LangGraph dev API** (Python) – `http://localhost:2024`
 - **FastAPI WebSocket server** (Python) – `ws://localhost:8000/ws`
