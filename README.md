@@ -67,11 +67,7 @@ docker compose up -d --no-deps --force-recreate app
 ## 4) Test everything is working
 
 - Open http://localhost:3001
-- Send a message. You should see:
-
--- **User** bubble on the **right**
--- **Bot** streaming response on the **left**
-
+- Send a message. You should see **User** bubble on the **right**, **Bot** streaming response on the **left**
 - check the container log output.. it should emit something like
 
 ```bash
