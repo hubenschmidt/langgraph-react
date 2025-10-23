@@ -63,7 +63,7 @@ def to_openai_messages(messages: List[Any]) -> List[Dict[str, str]]:
             out.append({"role": "user", "content": text})
     return out
 
-def ensure_system_message(msgs: List[Dict[str, str]], system_text: str) -> List[Dict[str, str]]:
+def ensure_system_prompt(msgs: List[Dict[str, str]], system_text: str) -> List[Dict[str, str]]:
     """
     Prepend a system message unless one already exists.
     """
@@ -110,7 +110,7 @@ class SimpleChatGraph:
         # 1) Normalize incoming messages
         msgs = to_openai_messages(state["messages"])
         # 2) Ensure our system prompt is present
-        msgs = ensure_system_message(msgs, SYSTEM_PROMPT)
+        msgs = ensure_system_prompt(msgs, SYSTEM_PROMPT)
 
         pieces: List[str] = []
         try:
