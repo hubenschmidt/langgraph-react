@@ -66,8 +66,12 @@ docker compose up -d --no-deps --force-recreate app
 
 ## 4) Test everything is working
 
-- navigate in a browser window to http://localhost:3001
-- enter a message in the chat
+- Open http://localhost:3001
+- Send a message. You should see:
+
+-- **User** bubble on the **right**
+-- **Bot** streaming response on the **left**
+
 - check the container log output.. it should emit something like
 
 ```bash
@@ -92,7 +96,7 @@ docker compose build app && docker compose up
 docker compose build client && docker compose up
 ```
 
-## 3) What's running (ports)
+## 5) What's running (ports)
 
 | Service                       | URL / Port             | Notes                                                      |
 | ----------------------------- | ---------------------- | ---------------------------------------------------------- |
@@ -102,18 +106,6 @@ docker compose build client && docker compose up
 | Langfuse Web                  | http://localhost:3000  | UI for traces; initialize on first run.                    |
 | MinIO (S3 API)                | http://localhost:9090  | Used by Langfuse for storage.                              |
 | Postgres / ClickHouse / Redis | _loopback only_        | Bound to `127.0.0.1` inside Compose; not publicly exposed. |
-
-## 4) Verify it works
-
-### Client UI
-
-1. Open http://localhost:3001
-2. Send a message.
-
-You should see:
-
-- **User** bubble on the **right**
-- **Bot** streaming response on the **left**
 
 ---
 
