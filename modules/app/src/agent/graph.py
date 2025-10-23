@@ -12,6 +12,7 @@ from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
+
 logger = logging.getLogger("app.graph")
 
 # loads and checks if env var exists before continuing to model invocation
@@ -90,8 +91,10 @@ graph_runnable = graph.compile(checkpointer=memory)
 import json
 from datetime import datetime
 from fastapi import WebSocket
+from langfuse import observe
 
 # Merging WS with LangGraph to invoke the graph and stream results to WebSocket
+@observe()
 async def invoke_our_graph(websocket: WebSocket, data: str, user_uuid: str):
     initial_input = {"messages": data}
     thread_config = {"configurable": {"thread_id": user_uuid}}  # Pass users conversation_id to manage chat memory on server side
