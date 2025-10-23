@@ -1,6 +1,6 @@
 # langgraph-react
 
-A batteries-included starter that runs:
+Starter that runs:
 
 - **LangGraph dev API** (Python) – `http://localhost:2024`
 - **FastAPI WebSocket server** (Python) – `ws://localhost:8000/ws`
