@@ -1,8 +1,8 @@
-# server.py — FastAPI + WebSocket (guard clauses, no `while True`)
+# server.py — FastAPI + WebSocket (no while/else/continue)
 # Flow:
 #   - accept WS
-#   - async-iterate incoming messages
-#   - parse → log → handle `init` or forward `message` to graph
+#   - async-iterate frames
+#   - handle each frame via a helper that uses guard returns
 #   - errors logged; socket closed on exit
 
 import json
@@ -26,56 +26,54 @@ app = FastAPI()
 # -----------------------------------------------------------------------------
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # Accept any incoming WebSocket right away
     await websocket.accept()
+    user_uuid: str | None = None
 
-    user_uuid = None  # set once we see a 'uuid' from the client
+    async def handle_frame(raw: str, uid: str | None) -> str | None:
+        # Parse JSON; on error, log and return
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as e:
+            logger.error(json.dumps({
+                "timestamp": datetime.now().isoformat(),
+                "uuid": uid,
+                "op": f"JSON encoding error - {e}"
+            }))
+            return uid
 
-    try:
-        # Iterate over incoming text frames; exits when client disconnects
-        async for data in websocket.iter_text():
-            # Parse JSON safely; skip bad frames
-            try:
-                payload = json.loads(data)
-            except json.JSONDecodeError as e:
-                logger.error(json.dumps({
-                    "timestamp": datetime.now().isoformat(),
-                    "uuid": user_uuid,
-                    "op": f"JSON encoding error - {e}"
-                }))
-                continue
+        # Log what we received
+        logger.info(json.dumps({
+            "timestamp": datetime.now().isoformat(),
+            "uuid": uid,
+            "received": payload
+        }))
 
-            # Log exactly what we received
+        # Track conversation id if provided
+        new_uid = payload.get("uuid") or uid
+
+        # Init ping? Just log and return
+        if payload.get("init"):
             logger.info(json.dumps({
                 "timestamp": datetime.now().isoformat(),
-                "uuid": user_uuid,
-                "received": payload
+                "uuid": new_uid,
+                "op": "Initializing ws with client."
             }))
+            return new_uid
 
-            # Track conversation id if provided
-            uid = payload.get("uuid")
-            if uid:
-                user_uuid = uid
+        # No message? Nothing to do
+        message = payload.get("message")
+        if not message:
+            return new_uid
 
-            # Init ping? Log and wait for next frame
-            if payload.get("init"):
-                logger.info(json.dumps({
-                    "timestamp": datetime.now().isoformat(),
-                    "uuid": user_uuid,
-                    "op": "Initializing ws with client."
-                }))
-                continue
+        # We have a message: invoke the graph (it streams back over this WS)
+        await invoke_our_graph(websocket, message, new_uid)
+        return new_uid
 
-            # No message content? Nothing to do
-            message = payload.get("message")
-            if not message:
-                continue
-
-            # We have a user message: invoke the graph (streams back over this WS)
-            await invoke_our_graph(websocket, message, user_uuid)
+    try:
+        async for data in websocket.iter_text():
+            user_uuid = await handle_frame(data, user_uuid)
 
     except Exception as e:
-        # Catch-all for unexpected errors during iteration
         logger.error(json.dumps({
             "timestamp": datetime.now().isoformat(),
             "uuid": user_uuid,
@@ -83,18 +81,15 @@ async def websocket_endpoint(websocket: WebSocket):
         }))
 
     finally:
-        # Attempt to close gracefully; log attempt if we know the uuid
         if user_uuid:
             logger.info(json.dumps({
                 "timestamp": datetime.now().isoformat(),
                 "uuid": user_uuid,
                 "op": "Closing connection."
             }))
-
         try:
             await websocket.close()
         except RuntimeError as e:
-            # If the socket is already closed, just log it
             logger.error(json.dumps({
                 "timestamp": datetime.now().isoformat(),
                 "uuid": user_uuid,
