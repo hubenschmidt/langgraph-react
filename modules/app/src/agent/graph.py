@@ -2,6 +2,11 @@
 # - One tiny default graph export (non-streaming, no memory) for loaders
 # - One streaming builder for your WebSocket path (with memory)
 # - Plain comments and small helpers
+# The graph is just a flow: START → conditional → model → END.
+# graph (at the bottom) is the non-streaming version used by auto-loaders.
+# invoke_our_graph is the WebSocket path: it builds a streaming graph and sends tokens to the frontend.
+# Change the model by editing MODEL_NAME (e.g., "gpt-4o-mini").
+# Per-conversation memory is only attached to the streaming graph via MemorySaver().
 
 import os, sys, json, logging, uuid
 from typing import TypedDict, List, Dict, Any, Optional, Callable, Awaitable, Union
@@ -29,18 +34,26 @@ TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0"))
 MAX_TOKENS_ENV = os.getenv("OPENAI_MAX_TOKENS")
 MAX_TOKENS = int(MAX_TOKENS_ENV) if MAX_TOKENS_ENV else None
 
+# System prompt (can be overridden via env if you want)
+SYSTEM_PROMPT = os.getenv(
+    "SYSTEM_PROMPT",
+    "You are a generic ChatBot. Your goal is to give contemplative, yet concise answers."
+)
+
 # -----------------------------------------------------------------------------
 # State type: LangGraph passes a dict-like state to each node.
-# We store a simple chat history list under "messages" (list of {role, content}).
+# We store a simple chat history list under 'messages' (list of {role, content}).
 # -----------------------------------------------------------------------------
 class ChatState(TypedDict):
     messages: List[Dict[str, str]]  # e.g. [{"role": "user", "content": "hi"}]
 
 # -----------------------------------------------------------------------------
-# Helper: make sure messages are in OpenAI format.
-# We accept either {"role","content"} dicts or generic objects with .content
+# Helpers
 # -----------------------------------------------------------------------------
 def to_openai_messages(messages: List[Any]) -> List[Dict[str, str]]:
+    """
+    Normalize a list of messages to OpenAI's {role, content} dicts.
+    """
     out: List[Dict[str, str]] = []
     for m in messages:
         if isinstance(m, dict) and "role" in m and "content" in m:
@@ -49,6 +62,15 @@ def to_openai_messages(messages: List[Any]) -> List[Dict[str, str]]:
             text = getattr(m, "content", str(m))
             out.append({"role": "user", "content": text})
     return out
+
+def ensure_system_message(msgs: List[Dict[str, str]], system_text: str) -> List[Dict[str, str]]:
+    """
+    Prepend a system message unless one already exists.
+    """
+    has_system = any(m.get("role") == "system" for m in msgs)
+    if has_system:
+        return msgs
+    return [{"role": "system", "content": system_text}] + msgs
 
 # -----------------------------------------------------------------------------
 # Class that builds graphs. Client is lazy so building a graph is synchronous.
@@ -84,7 +106,11 @@ class SimpleChatGraph:
         stream: bool,
     ) -> Dict[str, Any]:
         client = self._client_or_create()
+
+        # 1) Normalize incoming messages
         msgs = to_openai_messages(state["messages"])
+        # 2) Ensure our system prompt is present
+        msgs = ensure_system_message(msgs, SYSTEM_PROMPT)
 
         pieces: List[str] = []
         try:
