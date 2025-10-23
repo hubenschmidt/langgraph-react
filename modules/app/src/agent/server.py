@@ -2,7 +2,7 @@
 # Flow:
 #   - accept WS
 #   - async-iterate frames
-#   - handle each frame via a helper that uses guard returns
+#   - handle each frame via a helper
 #   - errors logged; socket closed on exit
 
 import json

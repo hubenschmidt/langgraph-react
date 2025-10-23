@@ -56,15 +56,28 @@ def to_openai_messages(messages: List[Any]) -> List[Dict[str, str]]:
     """Normalize a list of messages to OpenAI's {role, content} dicts (guard clauses only)."""
     out: List[Dict[str, str]] = []
     for m in messages:
-        if isinstance(m, dict) and "role" in m and "content" in m:
-            out.append({"role": m["role"], "content": m["content"]})
-            continue
+        role: Optional[str] = None
+        content: Optional[str] = None
 
-        text = getattr(m, "content", None)
-        if text is None:
-            text = str(m)
+        # If it's already a {role, content} dict, use it.
+        is_dict_with_keys = isinstance(m, dict) and "role" in m and "content" in m
+        if is_dict_with_keys:
+            role = m["role"]
+            content = m["content"]
 
-        out.append({"role": "user", "content": text})
+        # Otherwise, try .content attribute.
+        if content is None:
+            content = getattr(m, "content", None)
+
+        # Fallback to string coercion.
+        if content is None:
+            content = str(m)
+
+        # Default role if not provided.
+        if role is None:
+            role = "user"
+
+        out.append({"role": role, "content": content})
     return out
 
 def ensure_system_prompt(msgs: List[Dict[str, str]], system_text: str) -> List[Dict[str, str]]:
@@ -141,17 +154,17 @@ class SimpleChatGraph:
                 stream=True,
             )
 
+            def _chunk_content(ev) -> Optional[str]:
+                try:
+                    return ev.choices[0].delta.content
+                except Exception:
+                    return None
+
             async for ev in resp_stream:
-                if not ev.choices:
-                    continue
-                delta = ev.choices[0].delta
-                if not delta:
-                    continue
-                content = getattr(delta, "content", None)
-                if not content:
-                    continue
-                pieces.append(content)
-                await send_ws(json.dumps({"on_chat_model_stream": content}))
+                content = _chunk_content(ev)
+                if content:
+                    pieces.append(content)
+                    await send_ws(json.dumps({"on_chat_model_stream": content}))
 
             await send_ws(json.dumps({"on_chat_model_end": True}))
 
