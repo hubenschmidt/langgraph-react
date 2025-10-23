@@ -52,13 +52,13 @@ docker compose up
 
 ### Rebuild tips
 
-If you change Python deps in modules/app/pyproject.toml:
+- If you change Python deps in modules/app/pyproject.toml:
 
 ```bash
 docker compose build app && docker compose up
 ```
 
-If you change the client deps:
+- If you change the client deps:
 
 ```bash
 docker compose build client && docker compose up
