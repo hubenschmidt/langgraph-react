@@ -1,125 +1,267 @@
-# Anything below this is entirely up to you to change and is flexible to your LangGraph build, drop in replacement
-# `invoke_our_graph` expects the compiled graph to be called `graph_runnable` to work out of the box.
+# graph.py — LangGraph + OpenAI (no LangChain models)
+
 import sys, os, json, logging
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, List, Union
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
 
-from langchain_core.callbacks import adispatch_custom_event
+from langchain_core.callbacks import adispatch_custom_event   # only for event plumbing
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph import START, END, StateGraph
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
-
 logger = logging.getLogger("app.graph")
 
-# loads and checks if env var exists before continuing to model invocation
+# ======================================================================================
+# Env + OpenAI client
+# ======================================================================================
+
 load_dotenv()
-env_var_key = "OPENAI_API_KEY"
-model_path = os.getenv(env_var_key)
+ENV_KEY = "OPENAI_API_KEY"
+api_key = os.getenv(ENV_KEY)
 
-# If the API key is missing, log a fatal error and exit the application, no need to run LLM application without model!
-if not model_path:
-    logger.fatal(f"Fatal Error: The '{env_var_key}' environment variable is missing.")
+if not api_key:
+    logger.fatal(f"Fatal Error: The '{ENV_KEY}' environment variable is missing.")
     sys.exit(1)
 
-# Initialize the ChatModel LLM
-# ChatModel vs LLM concept https://python.langchain.com/docs/concepts/#chat-models
-# Available ChatModel integrations with LangChain https://python.langchain.com/docs/integrations/chat/
 try:
-    llm = ChatOpenAI(
-    model="gpt-4o",
-    temperature=0,
-    max_tokens=None,
-    timeout=None,
-    max_retries=2,
-    # base_url="...",
-    # organization="...",
-    # other params...
-)
+    # The OpenAI SDK reads OPENAI_API_KEY from env automatically
+    oai = AsyncOpenAI()
 except Exception as e:
-    # Log error if model initialization fails, exits. no vroom vroom :(
-    logger.fatal(f"Fatal Error: Failed to initialize model: {e}")
+    logger.fatal(f"Fatal Error: Failed to initialize OpenAI client: {e}")
     sys.exit(1)
 
-# This is the default state same as "MessageState" TypedDict but allows us accessibility to custom keys
+# ======================================================================================
+# Graph state
+# ======================================================================================
+
 class GraphsState(TypedDict):
-    messages: Annotated[list[AnyMessage], add_messages]
-    # Custom keys for additional data can be added here such as - conversation_id: str
+    # We keep LangGraph's message aggregator but we'll convert to OpenAI format at the node
+    messages: Annotated[List[AnyMessage], add_messages]
+    # Add your own keys here, e.g. conversation_id: str
 
 graph = StateGraph(GraphsState)
 
-# This is part of the easter egg! Essentially it will check for specific mention of keywords in the messages
-# and if it exists dispatch an immediate event to the frontend to catch to trigger an action or change in render.
-# This is a clear representation of the flexibility both any frontend and LangGraph can have with WS.
+# ======================================================================================
+# Helpers
+# ======================================================================================
+
+def _is_lc_msg(obj) -> bool:
+    """
+    Heuristic: detect LangChain message-like objects without importing LC types.
+    """
+    # LC messages typically have .type and .content attributes
+    return hasattr(obj, "content") and hasattr(obj, "type")
+
+def _to_openai_role(lc_type: str) -> str:
+    # Map common LangChain message types to OpenAI roles
+    # lc_type values often include "human", "ai", "system", "tool"
+    t = lc_type.lower()
+    if "human" in t or t == "user":
+        return "user"
+    if "ai" in t or t == "assistant":
+        return "assistant"
+    if "system" in t:
+        return "system"
+    if "tool" in t or "function" in t:
+        return "tool"
+    # Fallback
+    return "user"
+
+def _coerce_messages_for_openai(raw_messages: List[Union[AnyMessage, dict]]) -> List[dict]:
+    """
+    Accepts a heterogeneous list of LangGraph/LangChain messages or simple dicts
+    and converts them into OpenAI Chat Completions message format.
+    """
+    oai_messages = []
+    for m in raw_messages:
+        if isinstance(m, dict):
+            # Expecting {"role": "...", "content": "..."} etc.
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            name = m.get("name")
+            # tool messages may include tool_call_id in OAI schema; we pass through if present
+            oai_msg = {"role": role, "content": content}
+            if name:
+                oai_msg["name"] = name
+            if "tool_call_id" in m:
+                oai_msg["tool_call_id"] = m["tool_call_id"]
+            oai_messages.append(oai_msg)
+        elif _is_lc_msg(m):
+            # LangChain-style message object
+            role = _to_openai_role(getattr(m, "type", "user"))
+            content = getattr(m, "content", "")
+            # Tool messages sometimes store additional fields; keep minimal viable set
+            oai_messages.append({"role": role, "content": content})
+        else:
+            # Fallback: treat as user text
+            oai_messages.append({"role": "user", "content": str(m)})
+    return oai_messages
+
+async def _dispatch_stream_chunk(token: str, config: RunnableConfig):
+    # Mirror LangChain's stream event name so your FE can keep listening for it
+    await adispatch_custom_event("on_chat_model_stream", token, config=config)
+
+async def _dispatch_stream_end(config: RunnableConfig):
+    await adispatch_custom_event("on_chat_model_end", True, config=config)
+
+# ======================================================================================
+# Easter egg / conditional check node (unchanged)
+# ======================================================================================
+
 async def conditional_check(state: GraphsState, config: RunnableConfig):
-    # Try it out! ask the model any of the keywords below and see what happens in the frontend
     messages = state["messages"]
-    msg = messages[-1].content
+    if not messages:
+        return
+    last = messages[-1]
+    msg_text = last["content"] if isinstance(last, dict) else getattr(last, "content", "")
     keywords = ["LangChain", "langchain", "Langchain", "LangGraph", "Langgraph", "langgraph"]
-    if any(keyword in msg for keyword in keywords):
-        # we pass RunnableConfig in case the server is running on Python 3.10 or earlier
-        # https://langchain-ai.github.io/langgraph/how-tos/streaming-tokens/#:~:text=Note%20on%20Python%20%3C%203.11
+    if any(k in msg_text for k in keywords):
         await adispatch_custom_event("on_easter_egg", True, config=config)
-    pass
 
-# Core invocation of the model
-def _call_model(state: GraphsState, config: RunnableConfig):
-    messages = state["messages"]
-    response = llm.invoke(messages, config=config)
-    return {"messages": [response]}
+# ======================================================================================
+# Core LLM node — streams via OpenAI SDK, emits custom events, returns final message
+# ======================================================================================
 
-# Define graph nodes and edges for conditional checks and model invocation
-graph.add_node("modelNode", _call_model)
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")  # allow override via env if desired
+MODEL_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0"))
+MODEL_MAX_TOKENS = os.getenv("OPENAI_MAX_TOKENS")  # None means model-default
+
+async def call_openai_and_stream(state: GraphsState, config: RunnableConfig):
+    """
+    - Converts state messages to OpenAI format
+    - Calls chat.completions with stream=True
+    - Emits 'on_chat_model_stream' tokens and 'on_chat_model_end'
+    - Returns the full assistant message back into graph state
+    """
+    raw_messages = state["messages"]
+    oai_messages = _coerce_messages_for_openai(raw_messages)
+
+    final_text_parts: List[str] = []
+    try:
+        # NOTE: Using Chat Completions API for broad model support and simplicity here.
+        # If you prefer Responses API, wire similarly with client.responses.stream(...)
+        stream = oai.chat.completions.create(
+            model=MODEL_NAME,
+            messages=oai_messages,
+            temperature=MODEL_TEMPERATURE,
+            max_tokens=int(MODEL_MAX_TOKENS) if MODEL_MAX_TOKENS else None,
+            stream=True,
+        )
+        async for event in stream:
+            # Each event is a chunk with .choices[0].delta.content (when present)
+            try:
+                choices = getattr(event, "choices", [])
+                if not choices:
+                    continue
+                delta = getattr(choices[0], "delta", None)
+                if delta is None:
+                    continue
+                addition = getattr(delta, "content", None)
+                if addition:
+                    final_text_parts.append(addition)
+                    await _dispatch_stream_chunk(addition, config)
+            except Exception as inner_e:
+                # Continue on parsing mishaps; don't break the stream for minor issues
+                logger.debug(f"Stream parse warning: {inner_e}")
+        # Stream is finished
+        await _dispatch_stream_end(config)
+
+    except Exception as e:
+        logger.exception(f"OpenAI streaming failed: {e}")
+        # Surface a short error and still complete the node
+        final_text_parts.append("Sorry—there was an error generating the response.")
+
+    final_text = "".join(final_text_parts) if final_text_parts else ""
+    # Return as a new assistant message into the graph state
+    return {"messages": [{"role": "assistant", "content": final_text}]}
+
+# ======================================================================================
+# Wire up graph
+# ======================================================================================
+
 graph.add_node("conditional_check", conditional_check)
+graph.add_node("modelNode", call_openai_and_stream)
 graph.add_edge(START, "conditional_check")
 graph.add_edge("conditional_check", "modelNode")
 graph.add_edge("modelNode", END)
 
-memory = MemorySaver()  # Checkpointing mechanism to save conversation by thread_id
-                        # https://langchain-ai.github.io/langgraph/how-tos/persistence/
-
+memory = MemorySaver()
 graph_runnable = graph.compile(checkpointer=memory)
 
-# ===========================================================================================================
-# `invoke_our_graph` expects the compiled graph to be called `graph_runnable` to work out of the box. feel free to add your own
-# event actions. Here is the list of available events: https://python.langchain.com/docs/how_to/streaming/#event-reference
-# logs message in {"timestamp": "YYYY-MM-DDTHH:MM:SS.MS", "uuid": "", "llm_method": "", "sent": ""} format
-# except for token streaming due to verbosity
+# ======================================================================================
+# Invocation + WebSocket streaming
+# ======================================================================================
+# You said the part below is flexible; we keep your shape and
+# make sure both LC stream events (if any) and our custom events work.
+
 import json
 from datetime import datetime
 from fastapi import WebSocket
 from langfuse import observe
 
-# Merging WS with LangGraph to invoke the graph and stream results to WebSocket
 @observe()
-async def invoke_our_graph(websocket: WebSocket, data: str, user_uuid: str):
-    initial_input = {"messages": data}
-    thread_config = {"configurable": {"thread_id": user_uuid}}  # Pass users conversation_id to manage chat memory on server side
-    final_text = ""  # accumulate final output to log, rather then each token
+async def invoke_our_graph(websocket: WebSocket, data: Union[str, List[dict]], user_uuid: str):
+    """
+    `data` may be a plain string (user text) or a pre-baked list of {role, content} dicts.
+    We normalize it to the graph state's `messages` list.
+    """
+    if isinstance(data, str):
+        initial_input = {"messages": [{"role": "user", "content": data}]}
+    elif isinstance(data, list):
+        initial_input = {"messages": data}
+    else:
+        # Fallback
+        initial_input = {"messages": [{"role": "user", "content": str(data)}]}
 
-    # Asynchronous event-based response processing, data designated by event as key
+    thread_config = {"configurable": {"thread_id": user_uuid}}
+    final_text = ""
+
     async for event in graph_runnable.astream_events(initial_input, thread_config, version="v2"):
         kind = event["event"]
 
+        # 1) If *somehow* a LangChain model were used upstream, keep compatibility:
         if kind == "on_chat_model_stream":
-            addition = event["data"]["chunk"].content  # gets the token chunk
-            final_text += addition
+            addition = event.get("data", {}).get("chunk", {}).get("content", "")
+            final_text += addition or ""
             if addition:
-                message = json.dumps({"on_chat_model_stream": addition})
-                await websocket.send_text(message)
+                await websocket.send_text(json.dumps({"on_chat_model_stream": addition}))
 
         elif kind == "on_chat_model_end":
-            # Indicate the end of model generation so FE knows the message is over
-            message = json.dumps({"on_chat_model_end": True})
-            logger.info(json.dumps({"timestamp": datetime.now().isoformat(), "uuid": user_uuid, "llm_method": kind, "sent": final_text}))
-            await websocket.send_text(message)
+            await websocket.send_text(json.dumps({"on_chat_model_end": True}))
+            logger.info(json.dumps({
+                "timestamp": datetime.now().isoformat(),
+                "uuid": user_uuid,
+                "llm_method": kind,
+                "sent": final_text
+            }))
 
+        # 2) Our OpenAI-direct path emits *custom* events with the same names:
         elif kind == "on_custom_event":
-            # sends across custom event as if its its own event for easy working
-            # check out `conditional_check` node
-            message = json.dumps({event["name"]: event["data"]})
-            logger.info(json.dumps({"timestamp": datetime.now().isoformat(), "uuid": user_uuid, "llm_method": kind, "sent": message}))
-            await websocket.send_text(message)
+            name = event.get("name")
+            payload = event.get("data")
+            # Mirror the same accumulation & messages for streaming tokens:
+            if name == "on_chat_model_stream":
+                token = payload or ""
+                final_text += token
+                await websocket.send_text(json.dumps({"on_chat_model_stream": token}))
+            elif name == "on_chat_model_end":
+                await websocket.send_text(json.dumps({"on_chat_model_end": True}))
+                logger.info(json.dumps({
+                    "timestamp": datetime.now().isoformat(),
+                    "uuid": user_uuid,
+                    "llm_method": name,
+                    "sent": final_text
+                }))
+            else:
+                # Other custom events, e.g. easter egg
+                msg = json.dumps({name: payload})
+                logger.info(json.dumps({
+                    "timestamp": datetime.now().isoformat(),
+                    "uuid": user_uuid,
+                    "llm_method": kind,
+                    "sent": msg
+                }))
+                await websocket.send_text(msg)

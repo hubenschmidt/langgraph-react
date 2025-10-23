@@ -1,4 +1,4 @@
-import json, os, logging
+import json, logging
 from datetime import datetime
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
