@@ -32,7 +32,9 @@ if not API_KEY:
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
 TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0"))
 MAX_TOKENS_ENV = os.getenv("OPENAI_MAX_TOKENS")
-MAX_TOKENS = int(MAX_TOKENS_ENV) if MAX_TOKENS_ENV else None
+MAX_TOKENS = None
+if MAX_TOKENS_ENV:
+    MAX_TOKENS = int(MAX_TOKENS_ENV)
 
 # System prompt (can be overridden via env if you want)
 SYSTEM_PROMPT = os.getenv(
@@ -51,16 +53,18 @@ class ChatState(TypedDict):
 # Helpers
 # -----------------------------------------------------------------------------
 def to_openai_messages(messages: List[Any]) -> List[Dict[str, str]]:
-    """
-    Normalize a list of messages to OpenAI's {role, content} dicts.
-    """
+    """Normalize a list of messages to OpenAI's {role, content} dicts (guard clauses only)."""
     out: List[Dict[str, str]] = []
     for m in messages:
         if isinstance(m, dict) and "role" in m and "content" in m:
             out.append({"role": m["role"], "content": m["content"]})
-        else:
-            text = getattr(m, "content", str(m))
-            out.append({"role": "user", "content": text})
+            continue
+
+        text = getattr(m, "content", None)
+        if text is None:
+            text = str(m)
+
+        out.append({"role": "user", "content": text})
     return out
 
 def ensure_system_prompt(msgs: List[Dict[str, str]], system_text: str) -> List[Dict[str, str]]:
@@ -79,7 +83,9 @@ class SimpleChatGraph:
     def __init__(self, *, use_memory: bool):
         self.id = str(uuid.uuid4())
         self._client: Optional[AsyncOpenAI] = None
-        self._memory = MemorySaver() if use_memory else None  # only for WS graphs
+        self._memory = None
+        if use_memory:
+            self._memory = MemorySaver()  # only for WS graphs
 
     def _client_or_create(self) -> AsyncOpenAI:
         if self._client is None:
@@ -114,24 +120,8 @@ class SimpleChatGraph:
 
         pieces: List[str] = []
         try:
-            if stream and send_ws:
-                # Streaming path: send tokens to the frontend as they arrive
-                resp_stream = await client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=msgs,
-                    temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
-                    stream=True,
-                )
-                async for ev in resp_stream:
-                    if ev.choices:
-                        delta = ev.choices[0].delta
-                        if delta and delta.content:
-                            pieces.append(delta.content)
-                            await send_ws(json.dumps({"on_chat_model_stream": delta.content}))
-                await send_ws(json.dumps({"on_chat_model_end": True}))
-            else:
-                # Non-streaming path: return one complete message
+            # non-streaming path
+            if not (stream and send_ws):
                 resp = await client.chat.completions.create(
                     model=MODEL_NAME,
                     messages=msgs,
@@ -140,6 +130,31 @@ class SimpleChatGraph:
                     stream=False,
                 )
                 pieces.append(resp.choices[0].message.content or "")
+                return {"messages": [{"role": "assistant", "content": "".join(pieces)}]}
+
+            # streaming path
+            resp_stream = await client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=msgs,
+                temperature=TEMPERATURE,
+                max_tokens=MAX_TOKENS,
+                stream=True,
+            )
+
+            async for ev in resp_stream:
+                if not ev.choices:
+                    continue
+                delta = ev.choices[0].delta
+                if not delta:
+                    continue
+                content = getattr(delta, "content", None)
+                if not content:
+                    continue
+                pieces.append(content)
+                await send_ws(json.dumps({"on_chat_model_stream": content}))
+
+            await send_ws(json.dumps({"on_chat_model_end": True}))
+
         except Exception as e:
             logger.exception(f"OpenAI call failed: {e}")
             pieces.append("Sorry—there was an error generating the response.")
@@ -147,6 +162,7 @@ class SimpleChatGraph:
                 await send_ws(json.dumps({"on_chat_model_end": True}))
 
         return {"messages": [{"role": "assistant", "content": "".join(pieces)}]}
+
 
     # --- Builder: wire the two nodes together
     def build(self, *, send_ws: Optional[Callable[[str], Awaitable[None]]], stream: bool):
@@ -213,13 +229,13 @@ async def invoke_our_graph(websocket: WebSocket, data: Union[str, List[Dict[str,
         await websocket.send_text(payload)
 
     graph_runnable = build_streaming_graph(_send_ws)
-
-    # Build the initial state from `data`
-    if isinstance(data, str):
-        state: ChatState = {"messages": [{"role": "user", "content": data}]}
-    else:
-        state = {"messages": data}
-
-    # Memory scopes by user_uuid
     config = {"configurable": {"thread_id": user_uuid}}
+
+    if isinstance(data, list):
+        state: ChatState = {"messages": data}
+        await graph_runnable.ainvoke(state, config)
+        return
+
+    # Fallback: treat as a single user message
+    state: ChatState = {"messages": [{"role": "user", "content": str(data)}]}
     await graph_runnable.ainvoke(state, config)
