@@ -3,10 +3,10 @@
 # - One streaming builder for your WebSocket path (with memory)
 # - Plain comments and small helpers
 # The graph is just a flow: START → conditional → model → END.
-# graph (at the bottom) is the non-streaming version used by auto-loaders.
-# invoke_our_graph is the WebSocket path: it builds a streaming graph and sends tokens to the frontend.
-# Change the model by editing MODEL_NAME (e.g., "gpt-4o-mini").
-# Per-conversation memory is only attached to the streaming graph via MemorySaver().
+#   - graph (at the bottom) is the non-streaming version used by auto-loaders.
+#   - invoke_our_graph is the WebSocket path: it builds a streaming graph and sends tokens to the frontend.
+#   - Change the model by editing MODEL_NAME (e.g., "gpt-4o-mini").
+#   - Per-conversation memory is only attached to the streaming graph via MemorySaver().
 
 import os, sys, json, logging, uuid
 from typing import TypedDict, List, Dict, Any, Optional, Callable, Awaitable, Union
