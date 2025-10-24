@@ -36,7 +36,7 @@ cp .env.example .env
 
 OPENAI_API_KEY=sk-...
 
-#### Optional but recommended for Langfuse tracing
+#### Leave Langfuse PUBLIC_KEY and SECRET_KEY blank until step 3 below is completed
 
 LANGFUSE_PUBLIC_KEY=...
 LANGFUSE_SECRET_KEY=...
@@ -58,7 +58,7 @@ docker compose up
 - create New Project "langgraph-react"
 - Configure tracing -> Create new API key
 - Copy Secret Key and Public Key to /modules/app/.env PUBLIC_KEY and SECRET_KEY.. and maintain LANGFUSE_HOST="http://langfuse:3000"
-- recreate the `app` container.. open a new WSL2 window, navigate to `langgraph-react` directory and run
+- In order to capture these keys in the `app` container, recreate the `app` container.. open a new WSL2 window, navigate to `langgraph-react` directory and run
 
 ```bash
 docker compose up -d --no-deps --force-recreate app
