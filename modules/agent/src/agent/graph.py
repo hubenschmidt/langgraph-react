@@ -5,7 +5,7 @@
 # The graph is just a flow: START → conditional → model → END.
 #   - graph (at the bottom) is the non-streaming version used by auto-loaders.
 #   - invoke_our_graph is the WebSocket path: it builds a streaming graph and sends tokens to the frontend.
-#   - Change the model by editing MODEL_NAME (e.g., "gpt-4o-mini").
+#   - Change the model by editing MODEL_NAME (e.g., "gpt-5-chat-latest").
 #   - Per-conversation memory is only attached to the streaming graph via MemorySaver().
 
 import os, sys, json, logging, uuid
@@ -29,7 +29,7 @@ if not API_KEY:
     sys.exit(1)
 
 # You can change these with env vars if needed.
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o")
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-5-chat-latest")
 TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0"))
 MAX_TOKENS_ENV = os.getenv("OPENAI_MAX_TOKENS")
 MAX_TOKENS = None
