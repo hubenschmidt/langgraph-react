@@ -39,8 +39,9 @@ if MAX_TOKENS_ENV:
 # System prompt (can be overridden via env if you want)
 SYSTEM_PROMPT = os.getenv(
     "SYSTEM_PROMPT",
-    "You are a generic ChatBot. Your goal is to give contemplative, yet concise answers."
+    "You are a generic ChatBot. Your goal is to give contemplative, yet concise answers.",
 )
+
 
 # -----------------------------------------------------------------------------
 # State type: LangGraph passes a dict-like state to each node.
@@ -48,6 +49,7 @@ SYSTEM_PROMPT = os.getenv(
 # -----------------------------------------------------------------------------
 class ChatState(TypedDict):
     messages: List[Dict[str, str]]  # e.g. [{"role": "user", "content": "hi"}]
+
 
 # -----------------------------------------------------------------------------
 # Helpers
@@ -80,7 +82,10 @@ def to_openai_messages(messages: List[Any]) -> List[Dict[str, str]]:
         out.append({"role": role, "content": content})
     return out
 
-def ensure_system_prompt(msgs: List[Dict[str, str]], system_text: str) -> List[Dict[str, str]]:
+
+def ensure_system_prompt(
+    msgs: List[Dict[str, str]], system_text: str
+) -> List[Dict[str, str]]:
     """
     Prepend a system message unless one already exists.
     """
@@ -88,6 +93,7 @@ def ensure_system_prompt(msgs: List[Dict[str, str]], system_text: str) -> List[D
     if has_system:
         return msgs
     return [{"role": "system", "content": system_text}] + msgs
+
 
 # -----------------------------------------------------------------------------
 # Class that builds graphs. Client is lazy so building a graph is synchronous.
@@ -106,14 +112,18 @@ class SimpleChatGraph:
         return self._client
 
     # --- Node 1: optional easter-egg ping to the frontend (if WS is present)
-    async def node_conditional(self, state: ChatState, send_ws: Optional[Callable[[str], Awaitable[None]]]):
+    async def node_conditional(
+        self, state: ChatState, send_ws: Optional[Callable[[str], Awaitable[None]]]
+    ):
         if not state.get("messages"):
             return
         last = state["messages"][-1]
         text = last.get("content", "")
         if not text:
             return
-        if send_ws and any(k in text for k in ("LangChain", "langchain", "LangGraph", "langgraph")):
+        if send_ws and any(
+            k in text for k in ("LangChain", "langchain", "LangGraph", "langgraph")
+        ):
             await send_ws(json.dumps({"on_easter_egg": True}))
 
     # --- Node 2: call OpenAI. Stream if a websocket sender is provided.
@@ -176,9 +186,10 @@ class SimpleChatGraph:
 
         return {"messages": [{"role": "assistant", "content": "".join(pieces)}]}
 
-
     # --- Builder: wire the two nodes together
-    def build(self, *, send_ws: Optional[Callable[[str], Awaitable[None]]], stream: bool):
+    def build(
+        self, *, send_ws: Optional[Callable[[str], Awaitable[None]]], stream: bool
+    ):
         """
         Build and compile a graph:
           START -> conditional -> model -> END
@@ -198,7 +209,9 @@ class SimpleChatGraph:
         g.add_edge("conditional", "model")
         g.add_edge("model", END)
 
-        return g.compile(checkpointer=self._memory)  # None for default graph; MemorySaver for WS graph
+        return g.compile(
+            checkpointer=self._memory
+        )  # None for default graph; MemorySaver for WS graph
 
 
 # =============================================================================
@@ -212,6 +225,7 @@ def build_default_graph():
     """
     return SimpleChatGraph(use_memory=False).build(send_ws=None, stream=False)
 
+
 # The loader will look for this name:
 graph = build_default_graph()
 
@@ -222,6 +236,7 @@ graph = build_default_graph()
 from fastapi import WebSocket
 from langfuse import observe
 
+
 def build_streaming_graph(send_ws: Callable[[str], Awaitable[None]]):
     """
     Build a streaming graph that:
@@ -230,14 +245,18 @@ def build_streaming_graph(send_ws: Callable[[str], Awaitable[None]]):
     """
     return SimpleChatGraph(use_memory=True).build(send_ws=send_ws, stream=True)
 
+
 @observe()
-async def invoke_our_graph(websocket: WebSocket, data: Union[str, List[Dict[str, str]]], user_uuid: str):
+async def invoke_our_graph(
+    websocket: WebSocket, data: Union[str, List[Dict[str, str]]], user_uuid: str
+):
     """
     server.py calls this. We:
       1) Build a streaming graph bound to this websocket
       2) Normalize input into state
       3) Invoke the graph (which streams tokens during the run)
     """
+
     async def _send_ws(payload: str):
         await websocket.send_text(payload)
 

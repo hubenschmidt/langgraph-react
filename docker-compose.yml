@@ -1,18 +1,22 @@
 services:
   # --- LangGraph app ---
-  app:
+  agent:
     build:
-      context: ./modules/app
+      context: ./modules/agent
       dockerfile: Dockerfile
       target: dev
     env_file:
-      - ./modules/app/.env
+      - ./modules/agent/.env
     environment:
       - NODE_ENV=development
       - HOST=0.0.0.0
       - LANGFUSE_HOST=http://langfuse:3000 # app talks to Langfuse over the compose network
     volumes:
-      - ./modules/app:/app
+      # Mount source code with consistency mode for better performance
+      - ./modules/agent:/app:delegated
+      # Exclude these from the mount to avoid conflicts
+      - /app/__pycache__
+      - /app/.pytest_cache
     ports:
       - "2024:2024" # LangGraph API to host
       - "8000:8000" # FastAPI server.py

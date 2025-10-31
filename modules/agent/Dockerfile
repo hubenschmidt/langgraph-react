@@ -22,7 +22,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
 
 # Python deps (your pyproject must include fastapi/uvicorn/websockets)
-RUN uv pip install -e . --no-cache-dir
+RUN uv pip install -e . --no-cache-dir && \
+    uv pip install watchfiles --no-cache-dir
 
 # Copy start.sh to the Docker container
 COPY start.sh /usr/src/app/start.sh
